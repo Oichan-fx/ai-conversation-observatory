@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>過去の会話ログ - AI会話観察室</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
+</head>
+<body>
+<header>
+  <div class="title-row">
+    <h1>過去の会話ログ</h1>
+    <a href="/" class="nav-link">← 会話画面に戻る</a>
+  </div>
+</header>
+
+<main class="history">
+  <section class="panel">
+    <h2>会話一覧</h2>
+    <p id="list-empty" class="hint" hidden>まだ会話の記録はありません。</p>
+    <ul id="conv-list" class="conv-list"></ul>
+  </section>
+
+  <section class="panel">
+    <p id="detail-empty" class="hint">左の一覧から会話を選んでください。</p>
+    <div id="detail" hidden>
+      <div class="detail-head">
+        <h2 id="detail-title"></h2>
+        <div class="buttons">
+          <a id="export-md" class="button" href="#">Markdownで保存</a>
+          <a id="export-txt" class="button" href="#">テキストで保存</a>
+        </div>
+      </div>
+      <p class="hint">保存したファイルはブラウザのダウンロード先と、{{ export_dir }} の両方に保存されます。</p>
+      <dl id="detail-settings" class="settings-list"></dl>
+      <div class="personas">
+        <div class="persona a"><h3 id="name-a"></h3><p id="persona-a" class="persona-text"></p></div>
+        <div class="persona b"><h3 id="name-b"></h3><p id="persona-b" class="persona-text"></p></div>
+      </div>
+      <div id="detail-log" class="log"></div>
+    </div>
+    <p id="detail-error" class="error" hidden></p>
+  </section>
+</main>
+
+<script>window.NOTE_LABELS = {{ note_labels|tojson }};</script>
+<script src="{{ url_for('static', filename='common.js') }}"></script>
+<script src="{{ url_for('static', filename='history.js') }}"></script>
+</body>
+</html>

@@ -1,0 +1,26 @@
+# 秘密情報（APIキー）
+.env
+
+# 仮想環境
+.venv/
+venv/
+
+# 生成物（会話DB・エクスポート）
+data/
+exports/
+screenshots/
+*.db
+*.db-journal
+
+# Python
+__pycache__/
+*.pyc
+
+# エディタ・OS
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini
+
+# 起動・停止スクリプトのログとプロセス番号の記録
+logs/

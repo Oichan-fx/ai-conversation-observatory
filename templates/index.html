@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AI会話観察室</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
+</head>
+<body class="app-layout">
+<header>
+  <div class="title-row">
+    <h1>AI会話観察室</h1>
+    <a href="/history" class="nav-link">過去の会話ログ →</a>
+  </div>
+  <p class="notice">入力したテーマや会話内容はGoogleのGemini APIへ送信されます。個人情報や機密情報は入力しないでください。</p>
+</header>
+
+{% if problems %}
+<section class="setup">
+  <h2>はじめに設定が必要です</h2>
+  {% if 'no_api_key' in problems %}
+  <p><strong>Gemini APIキーが設定されていません。</strong></p>
+  <ol>
+    <li>Google AI Studio（https://aistudio.google.com/apikey）でAPIキーを作成します。</li>
+    <li>このアプリのフォルダにある <code>.env.example</code> をコピーし、名前を <code>.env</code> に変更します。</li>
+    <li><code>.env</code> をメモ帳で開き、<code>GEMINI_API_KEY=</code> の後ろにAPIキーを貼り付けて保存します。</li>
+    <li>アプリを停止（Ctrl + C）し、もう一度起動します。</li>
+  </ol>
+  {% endif %}
+  {% if 'no_model' in problems %}
+  <p><strong>使用するモデル名が設定されていません。</strong></p>
+  <ol>
+    <li>APIキーを設定したあと、コマンドで <code>python list_models.py</code> を実行し、利用可能なモデル名を確認します。</li>
+    <li><code>.env</code> の <code>GEMINI_MODEL=</code> の後ろにモデル名を書いて保存します。</li>
+    <li>アプリを停止（Ctrl + C）し、もう一度起動します。</li>
+  </ol>
+  {% endif %}
+  <p>詳しくは README.md を参照してください。</p>
+</section>
+{% endif %}
+
+<main>
+  <section class="panel settings">
+    <h2>会話の設定</h2>
+    <fieldset>
+      <legend>会話モード</legend>
+      <label><input type="radio" name="mode" value="free" checked> フリートーク</label>
+      <label><input type="radio" name="mode" value="topic"> テーマ指定</label>
+    </fieldset>
+    <label class="block">テーマ <span id="topic-required" class="hint">（フリートークでは任意・使用しません）</span>
+      <textarea id="topic" rows="2" maxlength="{{ topic_max_len }}" placeholder="例：もし猫が言葉を話せたら"></textarea>
+    </label>
+    <div class="number-grid">
+      <label class="block">最大発言数<span class="hint">（1〜{{ max_turns_limit }}）</span>
+        <input type="number" id="max-turns" min="1" max="{{ max_turns_limit }}" value="{{ default_max_turns }}">
+      </label>
+      <label class="block">1発言の最大文字数<span class="hint">（{{ max_chars_range[0] }}〜{{ max_chars_range[1] }}）</span>
+        <input type="number" id="max-chars" min="{{ max_chars_range[0] }}" max="{{ max_chars_range[1] }}" value="{{ max_chars }}">
+      </label>
+      <label class="block">履歴として渡す発言数<span class="hint">（{{ history_range[0] }}〜{{ history_range[1] }}）</span>
+        <input type="number" id="history-size" min="{{ history_range[0] }}" max="{{ history_range[1] }}" value="{{ history_size }}">
+      </label>
+      <label class="block">発言間隔（秒）<span class="hint">（{{ interval_range[0] }}〜{{ interval_range[1] }}）</span>
+        <input type="number" id="interval-sec" min="{{ interval_range[0] }}" max="{{ interval_range[1] }}" value="{{ interval }}">
+      </label>
+    </div>
+    <p class="hint">レート制限のエラーが出る場合は、発言間隔を10〜20秒に増やしてください。</p>
+
+    <div class="personas">
+      {% for key in ["a", "b"] %}
+      <div class="persona {{ key }} clickable" id="card-{{ key }}" data-key="{{ key }}">
+        <div class="persona-head">
+          <h3 id="card-name-{{ key }}">AI {{ key|upper }}</h3>
+          <span class="hint">クリックしてキャラクター設定</span>
+        </div>
+        <label class="model-select">モデル <select id="model-{{ key }}"></select></label>
+        <p class="persona-summary" id="card-summary-{{ key }}" tabindex="0" role="button"
+           aria-label="AI {{ key|upper }} のキャラクター設定を開く"></p>
+      </div>
+      {% endfor %}
+    </div>
+    <p id="name-warning" class="warning" hidden></p>
+    <div class="model-refresh">
+      <button id="refresh-models" type="button" class="small">モデル一覧を更新</button>
+      <span id="models-updated" class="hint"></span>
+    </div>
+    <p class="hint">
+      選択肢には、APIキーを設定済みの会社のモデルだけが並びます（かっこ内は直近24時間の残り回数の目安）。
+      「モデル一覧を更新」を押したときだけ、APIから一覧を取得します（発言の生成とは別の窓口です）。
+    </p>
+
+    <div class="usage">
+      <h3>直近{{ usage_hours }}時間の使用回数 <span class="hint">（このアプリの記録から数えた目安）</span></h3>
+      <table id="usage-table" class="usage-table"></table>
+      <p class="hint">
+        再試行やエラーになった呼び出しも含みます。他のアプリや AI Studio で使った分は含みません。
+        実際の上限と使用状況は <a href="https://ai.dev/rate-limit" target="_blank" rel="noopener">AI Studio</a> で確認できます。
+      </p>
+    </div>
+    <p id="usage-warning" class="warning" hidden></p>
+
+    <div class="buttons">
+      <button id="start-btn" {% if problems %}disabled{% endif %}>会話開始</button>
+      <button id="pause-btn" disabled>一時停止</button>
+      <button id="resume-btn" disabled>再開</button>
+      <button id="stop-btn" disabled>終了</button>
+    </div>
+    <p class="hint">
+      一時停止：AIが発言を生成中の場合は、その発言が完成して保存されてから止まります。<br>
+      終了：生成中の発言は保存せずに終了します。
+    </p>
+    <p class="hint">会話ログの保存先: {{ db_path }}</p>
+  </section>
+
+  <section class="panel log-panel">
+    <div class="status-bar">
+      <span>状態: <strong id="status">待機中</strong></span>
+      <span>発言数: <strong id="turns">0 / 0</strong></span>
+      <span id="next-wrap" hidden>話す番: <strong id="next-speaker"></strong></span>
+      <span id="timer" class="timer" hidden></span>
+    </div>
+    <div class="progress" role="progressbar" aria-label="会話の進み具合" aria-valuemin="0"
+         aria-valuemax="0" aria-valuenow="0" id="progress"><div class="progress-fill" id="progress-fill"></div></div>
+    <p id="activity" class="activity"></p>
+    <p id="error" class="error" hidden></p>
+    <div id="log" class="log" aria-live="polite"></div>
+  </section>
+</main>
+
+<!-- キャラクター設定パネル（AI A／AI B の欄をクリックすると開く） -->
+<div id="char-panel" class="char-panel" hidden>
+  <div class="char-backdrop" id="char-backdrop"></div>
+  <section class="char-sheet" role="dialog" aria-modal="true" aria-labelledby="char-title">
+    <div class="char-head">
+      <h2 id="char-title">キャラクター設定</h2>
+      <button type="button" id="char-close" class="small" aria-label="閉じる">× 閉じる</button>
+    </div>
+
+    <div class="char-presets">
+      <label>プリセット <select id="preset-select"></select></label>
+      <button type="button" id="preset-load" class="small">呼び出す</button>
+      <button type="button" id="preset-save" class="small">保存…</button>
+      <button type="button" id="preset-delete" class="small">削除</button>
+    </div>
+    <div class="char-random-all">
+      <button type="button" id="random-all">🎲 全部ランダム</button>
+      <span class="hint">全項目を選び直し、自由記入と追加の指示は空にします（項目ごとの🎲は自由記入を残します）</span>
+    </div>
+
+    <div id="char-fields" class="char-fields"></div>
+
+    <label class="block">追加の指示（自由記入）
+      <textarea id="char-extra" rows="4" placeholder="例：話の途中で好きな食べ物の話をはさむ"></textarea>
+    </label>
+
+    <div class="char-preview">
+      <h3>システム指示のプレビュー</h3>
+      <pre id="preview-persona" class="preview-box"></pre>
+      <p class="hint">▼ 以下は会話の質を保つためのルールで、どのキャラクターでも必ず追加されます（ここでは編集できません）</p>
+      <pre id="preview-rules" class="preview-box rules"></pre>
+    </div>
+
+    <p id="char-error" class="error" hidden></p>
+    <div class="buttons char-actions">
+      <button type="button" id="char-apply">この設定を使う</button>
+      <button type="button" id="char-cancel">キャンセル</button>
+    </div>
+  </section>
+</div>
+
+<script>
+  window.APP = {
+    defaultModelA: {{ default_model_a|tojson }}, defaultModelB: {{ default_model_b|tojson }},
+  };
+  window.NOTE_LABELS = {{ note_labels|tojson }};
+</script>
+<script src="{{ url_for('static', filename='common.js') }}"></script>
+<script src="{{ url_for('static', filename='character.js') }}"></script>
+<script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>

@@ -36,6 +36,16 @@ def setup_problems():
     return []
 
 
+def display_path(path):
+    """画面に出すパス。アプリのフォルダ内なら「アプリのフォルダ\\…」の形にする
+    （ユーザー名などPC固有の部分を画面に出さないため。実際の保存先は変えない）。"""
+    try:
+        relative = path.relative_to(config.BASE_DIR)
+    except ValueError:
+        return str(path)  # 設定でフォルダの外にした場合は、そのまま表示する
+    return "アプリのフォルダ\\" + str(relative)
+
+
 @app.get("/")
 def index():
     default_a, default_b = model_catalog.default_refs()
@@ -53,7 +63,7 @@ def index():
         interval=config.TURN_INTERVAL_SEC,
         interval_range=config.TURN_INTERVAL_RANGE,
         topic_max_len=config.TOPIC_MAX_LEN,
-        db_path=str(config.DB_PATH),
+        db_path=display_path(config.DB_PATH),
         usage_hours=config.USAGE_WINDOW_HOURS,
         note_labels=NOTE_LABELS,
     )
@@ -61,7 +71,7 @@ def index():
 
 @app.get("/history")
 def history():
-    return render_template("history.html", export_dir=str(config.EXPORT_DIR),
+    return render_template("history.html", export_dir=display_path(config.EXPORT_DIR),
                            note_labels=NOTE_LABELS)
 
 
